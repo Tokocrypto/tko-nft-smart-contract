@@ -28,7 +28,7 @@ contract TKONFTMarketplace is ERC721Holder, AccessControl, Pausable {
     uint256 private _feeCollector;
     address private _feeAddress;
     uint256 private _expiredTimes;
-    // Create a new role identifier for the minter role
+    
     bytes32 public constant OPS_ROLE = keccak256("OPS_ROLE");
     bytes32 public constant MERCHANT_ROLE = keccak256("MERCHANT_ROLE");
 
@@ -56,26 +56,6 @@ contract TKONFTMarketplace is ERC721Holder, AccessControl, Pausable {
         _setRoleAdmin(MERCHANT_ROLE, OPS_ROLE);
         _expiredTimes = 10 minutes;
         priceFeed = AggregatorV3Interface(contractPrice);
-    }
-
-    function addOpsRole(address addressRole) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(hasRole(OPS_ROLE, addressRole) == false);
-        _setupRole(OPS_ROLE, addressRole);
-    }
-
-    function removeOpsRole(address addressRole) external {
-        require(hasRole(OPS_ROLE, addressRole) == true);
-        revokeRole(OPS_ROLE, addressRole);
-    }
-
-    function addMerchantRole(address addressRole) external onlyRole(OPS_ROLE) {
-        require(hasRole(MERCHANT_ROLE, addressRole) == false);
-        _setupRole(MERCHANT_ROLE, addressRole);
-    }
-
-    function removeMerchantRole(address addressRole) external {
-        require(hasRole(MERCHANT_ROLE, addressRole) == true);
-        revokeRole(MERCHANT_ROLE, addressRole);
     }
 
     function pause() external onlyRole(DEFAULT_ADMIN_ROLE) whenNotPaused {
@@ -181,7 +161,7 @@ contract TKONFTMarketplace is ERC721Holder, AccessControl, Pausable {
         return boolAsks;
     }
 
-    function sellNFT(address contractNFT_, uint256 tokenId_, uint256 price_) external whenNotPaused {
+    function sellNFT(address contractNFT_, uint256 tokenId_, uint256 price_) public whenNotPaused {
         address sender = _msgSender();
         require(price_ > 0);
         require(_contractNFT[contractNFT_] == true);
@@ -200,6 +180,12 @@ contract TKONFTMarketplace is ERC721Holder, AccessControl, Pausable {
         emit Ask(numAsk, sender, contractNFT_, tokenId_, price_);
     }
 
+    function sellNFTBatch(address contractNFT_, uint256[] memory tokenIds_, uint256 price_) external whenNotPaused {
+        for (uint256 i = 0; i < tokenIds_.length; i++) {
+            sellNFT(contractNFT_, tokenIds_[i], price_);
+        }
+    }
+
     function setCurrentPrice(uint256 numAsk_, uint256 price_) external whenNotPaused {
         address sender = _msgSender();
         AskEntry memory NFTSeller = _NFTSellers[numAsk_];
@@ -212,7 +198,7 @@ contract TKONFTMarketplace is ERC721Holder, AccessControl, Pausable {
         emit Ask(numAsk_, sender, NFTSeller._contractNFT, NFTSeller._tokenId, price_);
     }
 
-    function cancelSellNFT(uint256 numAsk_) external whenNotPaused {
+    function cancelSellNFT(uint256 numAsk_) public whenNotPaused {
         address sender = _msgSender();
         AskEntry memory NFTSeller = _NFTSellers[numAsk_];
         require(NFTSeller._seller == sender);
@@ -221,6 +207,12 @@ contract TKONFTMarketplace is ERC721Holder, AccessControl, Pausable {
         delete _numAskSellNFT[numAsk_];
         delete _NFTSellers[numAsk_];
         emit CancelSellNFT(numAsk_, sender, NFTSeller._contractNFT, NFTSeller._tokenId);
+    }
+
+    function cancelSellNFTBatch(uint256[] memory numAsks_) external whenNotPaused {
+        for (uint256 i = 0; i < numAsks_.length; i++) {
+            cancelSellNFT(numAsks_[i]);
+        }
     }
 
     function buyNFT(uint256 numAsk_) external whenNotPaused {
@@ -331,8 +323,13 @@ contract TKONFTMarketplace is ERC721Holder, AccessControl, Pausable {
         _expiredTimes = expiredTimes_ * 1 minutes;
     }
 
-    function expiredTimes() external view returns(uint256) {
-        return _expiredTimes;
+    function expiredTimes() external view returns(uint256, uint256) {
+        (
+            int256 answer,
+            uint256 startedAt,
+            uint256 updatedAt
+        ) = _getThePrice();
+        return (startedAt, _expiredTimes);
     }
 
     function _getThePrice() internal view returns(int256, uint256, uint256) {

@@ -1,6 +1,6 @@
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "./IBEP20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
@@ -21,7 +21,7 @@ contract TKONFTMarketplace is ERC721Holder, AccessControl, Pausable {
         bool _firstSellingMerchant;
     }
     
-    IERC20 private tkoContract;
+    IBEP20 private tkoContract;
     uint256 private _feeMarketplace;
     uint256 private _feeOwner;
     uint256 private _feeMerchant;
@@ -49,7 +49,7 @@ contract TKONFTMarketplace is ERC721Holder, AccessControl, Pausable {
     constructor(address contractTKO, address feeAddress_, address contractPrice) {
         _numAsk.increment();
         _feeAddress = feeAddress_;
-        tkoContract = IERC20(contractTKO);
+        tkoContract = IBEP20(contractTKO);
         _setupRole(OPS_ROLE, _msgSender());
         _setupRole(MERCHANT_ROLE, _msgSender());
         _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
@@ -113,7 +113,7 @@ contract TKONFTMarketplace is ERC721Holder, AccessControl, Pausable {
         delete _suspendCollector[collector_];
     }
 
-    function isSuspendCollector(address collector_) public view returns(bool) {
+    function isSuspendCollector(address collector_) external view returns(bool) {
         return _suspendCollector[collector_];
     }
 
@@ -180,13 +180,13 @@ contract TKONFTMarketplace is ERC721Holder, AccessControl, Pausable {
         emit Ask(numAsk, sender, contractNFT_, tokenId_, price_);
     }
 
-    function sellNFTBatch(address contractNFT_, uint256[] memory tokenIds_, uint256 price_) external whenNotPaused {
+    function sellNFTBatch(address contractNFT_, uint256[] memory tokenIds_, uint256 price_) external {
         for (uint256 i = 0; i < tokenIds_.length; i++) {
             sellNFT(contractNFT_, tokenIds_[i], price_);
         }
     }
 
-    function setCurrentPrice(uint256 numAsk_, uint256 price_) external whenNotPaused {
+    function setCurrentPrice(uint256 numAsk_, uint256 price_) public whenNotPaused {
         address sender = _msgSender();
         AskEntry memory NFTSeller = _NFTSellers[numAsk_];
         require(price_ > 0);
@@ -196,6 +196,12 @@ contract TKONFTMarketplace is ERC721Holder, AccessControl, Pausable {
         require(_numAskSellNFT[numAsk_] == true);
         _NFTSellers[numAsk_]._price = price_;
         emit Ask(numAsk_, sender, NFTSeller._contractNFT, NFTSeller._tokenId, price_);
+    }
+
+    function setCurrentPriceBatch(uint256[] memory numAsks_, uint256 price_) external {
+        for (uint256 i = 0; i < numAsks_.length; i++) {
+            setCurrentPrice(numAsks_[i], price_);
+        }
     }
 
     function cancelSellNFT(uint256 numAsk_) public whenNotPaused {
@@ -209,7 +215,7 @@ contract TKONFTMarketplace is ERC721Holder, AccessControl, Pausable {
         emit CancelSellNFT(numAsk_, sender, NFTSeller._contractNFT, NFTSeller._tokenId);
     }
 
-    function cancelSellNFTBatch(uint256[] memory numAsks_) external whenNotPaused {
+    function cancelSellNFTBatch(uint256[] memory numAsks_) external {
         for (uint256 i = 0; i < numAsks_.length; i++) {
             cancelSellNFT(numAsks_[i]);
         }
@@ -219,16 +225,15 @@ contract TKONFTMarketplace is ERC721Holder, AccessControl, Pausable {
         address sender = _msgSender();
         AskEntry memory NFTSeller = _NFTSellers[numAsk_];
         (
-            int256 answer,
+            uint256 price,
             uint256 startedAt,
             uint256 updatedAt
-        ) = _getThePrice();
+        ) = getThePrice(numAsk_);
         require(_suspendNFT[numAsk_] == false);
         require(_suspendCollector[sender] == false);
         require(_numAskSellNFT[numAsk_] == true);
         require(NFTSeller._seller != sender);
         require(updatedAt <= (startedAt + _expiredTimes));
-        uint256 price = NFTSeller._price / uint256(answer);
         uint256 feeOwner = (price / 1e4);
         uint256 amountForSeller = price;
         if (hasRole(MERCHANT_ROLE, NFTSeller._seller) == true && NFTSeller._firstSellingMerchant == true) {
@@ -262,28 +267,6 @@ contract TKONFTMarketplace is ERC721Holder, AccessControl, Pausable {
         for(uint256 i = 0;i < numAsks_.length; i++) {
             asks[i] = AskEntry(_NFTSellers[numAsks_[i]]._seller, _NFTSellers[numAsks_[i]]._contractNFT,
             _NFTSellers[numAsks_[i]]._tokenId, _NFTSellers[numAsks_[i]]._price, _NFTSellers[numAsks_[i]]._firstSellingMerchant);
-        }
-        return asks;
-    }
-
-    function getAsks() external view returns(AskEntry[] memory) {
-        uint256 numAsk = _numAsk.current();
-        AskEntry[] memory asks = new AskEntry[]((numAsk - 1));
-        for(uint256 i = 1;i < numAsk; i++) {
-            asks[(i- 1)] = AskEntry(_NFTSellers[i]._seller, _NFTSellers[i]._contractNFT,
-            _NFTSellers[i]._tokenId, _NFTSellers[i]._price, _NFTSellers[i]._firstSellingMerchant);
-        }
-        return asks;
-    }
-
-    function getAsksDesc() external view returns(AskEntry[] memory) {
-        uint256 numAsk = _numAsk.current() - 1;
-        uint256 i = 0;
-        AskEntry[] memory asks = new AskEntry[](numAsk);
-        for(uint256 a = numAsk;a > 0; a--) {
-            asks[i] = AskEntry(_NFTSellers[a]._seller, _NFTSellers[a]._contractNFT,
-            _NFTSellers[a]._tokenId, _NFTSellers[a]._price, _NFTSellers[a]._firstSellingMerchant);
-            i++;
         }
         return asks;
     }
@@ -323,16 +306,7 @@ contract TKONFTMarketplace is ERC721Holder, AccessControl, Pausable {
         _expiredTimes = expiredTimes_ * 1 minutes;
     }
 
-    function expiredTimes() external view returns(uint256, uint256) {
-        (
-            int256 answer,
-            uint256 startedAt,
-            uint256 updatedAt
-        ) = _getThePrice();
-        return (startedAt, _expiredTimes);
-    }
-
-    function _getThePrice() internal view returns(int256, uint256, uint256) {
+    function expiredTimes() external view returns(uint256, uint256, uint256) {
         (
             uint80 roundId,
             int256 answer,
@@ -340,17 +314,19 @@ contract TKONFTMarketplace is ERC721Holder, AccessControl, Pausable {
             uint256 updatedAt,
             uint80 answeredInRound
         ) = priceFeed.latestRoundData();
-        return (answer, startedAt, updatedAt);
+        return (startedAt, updatedAt, _expiredTimes);
     }
 
-    function getThePrice(uint256 numAsk_) external view returns(uint256) {
+    function getThePrice(uint256 numAsk_) public view returns(uint256, uint256, uint256) {
         (
+            uint80 roundId,
             int256 answer,
             uint256 startedAt,
-            uint256 updatedAt
-        ) = _getThePrice();
-        AskEntry memory NFTSeller = _NFTSellers[numAsk_];
-        uint256 tko = NFTSeller._price / uint256(answer);
-        return tko;
+            uint256 updatedAt,
+            uint80 answeredInRound
+        ) = priceFeed.latestRoundData();
+        uint8 decimalsPF = priceFeed.decimals();
+        uint256 price = (_NFTSellers[numAsk_]._price * (10 ** uint256(tkoContract.decimals()))) / uint256(answer) / (10 ** uint256(decimalsPF));
+        return (price, startedAt, updatedAt);
     }
 }

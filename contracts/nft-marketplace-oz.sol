@@ -326,7 +326,7 @@ contract TKONFTMarketplace is ERC721Holder, AccessControl, Pausable {
             uint80 answeredInRound
         ) = priceFeed.latestRoundData();
         uint8 decimalsPF = priceFeed.decimals();
-        uint256 price = (_NFTSellers[numAsk_]._price * (10 ** uint256(tkoContract.decimals()))) / uint256(answer) / (10 ** uint256(decimalsPF));
+        uint256 price = (_NFTSellers[numAsk_]._price * (10 ** (uint256(tkoContract.decimals()) + uint256(decimalsPF)))) / uint256(answer);
         return (price, startedAt, updatedAt);
     }
 }

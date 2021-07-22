@@ -23,7 +23,7 @@ contract NftFactory {
         return nfts;
     }
 
-    function getNftsByUser(address _user) public view returns (address[] memory) {
+    function getNftsByUser(address _user) public view returnås (address[] memory) {
         return userNfts[_user];
     }
 }

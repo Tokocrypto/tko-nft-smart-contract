@@ -1,7 +1,7 @@
 const { assert } = require("chai");
 const truffleAssert = require('truffle-assertions');
 
-const TKOTokenExample = artifacts.require('TKOTokenExample');
+const TKOTokenExample = artifacts.require('TKOToken');
 const TKONFT = artifacts.require('TKONFT');
 const TKONFTMarketplace = artifacts.require('TKONFTMarketplace');
 
@@ -21,6 +21,7 @@ contract('TKONFTMarketplace', function(accounts) {
     MERCHANT_ROLE = await contract_marketplace.MERCHANT_ROLE.call();
     OPS_ROLE = await contract_marketplace.OPS_ROLE.call();
     DEFAULT_ADMIN_ROLE = await contract_marketplace.DEFAULT_ADMIN_ROLE.call();
+    await contract_token.mint("500000000000000000000000000");
     await contract_nft.safeMintBatch(accounts[0], ["0x0", "0x1", "0x2", "0x3", "0x4", "0x5", "0x6", "0x7", "0x8", "0x9"]);
     await contract_nft.approve(contract_marketplace.address, 1);
     await contract_nft.approve(contract_marketplace.address, 2);
@@ -40,33 +41,7 @@ contract('TKONFTMarketplace', function(accounts) {
     assert.notDeepEqual(await contract_marketplace.hasRole(DEFAULT_ADMIN_ROLE, accounts[0]), false);
   });
 
-  it('2. Add Ops Role', async () => {
-    await truffleAssert.fails(contract_marketplace.addOpsRole(accounts[1], { from: accounts[2] }));
-    await contract_marketplace.addOpsRole(accounts[1]);
-    assert.notDeepEqual(await contract_marketplace.hasRole(OPS_ROLE, accounts[1]), false);
-  });
-
-  it('3. Remove Ops Role', async () => {
-    await truffleAssert.fails(contract_marketplace.removeOpsRole(accounts[1], { from: accounts[2] }));
-    await contract_marketplace.removeOpsRole(accounts[1]);
-    assert.notDeepEqual(await contract_marketplace.hasRole(OPS_ROLE, accounts[1]), true);
-  });
-
-  it('4. Add Merchant Role', async () => {
-    await truffleAssert.fails(contract_marketplace.addMerchantRole(accounts[1], { from: accounts[2] }));
-    await contract_marketplace.addMerchantRole(accounts[1]);
-    assert.notDeepEqual(await contract_marketplace.hasRole(MERCHANT_ROLE, accounts[1]), false);
-  });
-
-  it('5. Remove Merchant Role', async () => {
-    await contract_marketplace.addOpsRole(accounts[2]);
-    await truffleAssert.fails(contract_marketplace.removeMerchantRole(accounts[1], { from: accounts[3] }));
-    await contract_marketplace.removeMerchantRole(accounts[1], { from: accounts[2] });
-    await contract_marketplace.removeOpsRole(accounts[2]);
-    assert.notDeepEqual(await contract_marketplace.hasRole(MERCHANT_ROLE, accounts[1]), true);
-  });
-
-  it('6. Pause and Unpause', async () => {
+  it('2. Pause and Unpause', async () => {
     await truffleAssert.fails(contract_marketplace.pause({ from: accounts[1] }));
     await contract_marketplace.pause();
     assert.notDeepEqual(await contract_marketplace.paused(), false);
@@ -75,7 +50,7 @@ contract('TKONFTMarketplace', function(accounts) {
     assert.notDeepEqual(await contract_marketplace.paused(), true);
   });
 
-  it('7. Set Fee and Show Fee', async () => {
+  it('3. Set Fee and Show Fee', async () => {
     await truffleAssert.fails(contract_marketplace.setFee(1000, 150, 150, 300, { from: accounts[1] }));
     await truffleAssert.fails(contract_marketplace.setFee(10001, 10002, 10003, 10004));
     await contract_marketplace.setFee(1000, 150, 150, 300);
@@ -88,13 +63,13 @@ contract('TKONFTMarketplace', function(accounts) {
     })
   });
 
-  it('8. Set Fee Address and Show Fee Address', async () => {
+  it('4. Set Fee Address and Show Fee Address', async () => {
     await truffleAssert.fails(contract_marketplace.setFeeAddress(accounts[1], { from: accounts[2] }));
     await contract_marketplace.setFeeAddress(accounts[1]);
     assert.notDeepEqual(await contract_marketplace.showFeeAddress(), accounts[2])
   });
 
-  it('9. Suspend Collector, Check Suspend Collector, and Unsuspend Collector', async () => {
+  it('5. Suspend Collector, Check Suspend Collector, and Unsuspend Collector', async () => {
     await truffleAssert.fails(contract_marketplace.suspendCollector(accounts[2], { from: accounts[3] }));
     await contract_marketplace.suspendCollector(accounts[2]);
     assert.notDeepEqual(await contract_marketplace.isSuspendCollector(accounts[2]), false);
@@ -103,7 +78,7 @@ contract('TKONFTMarketplace', function(accounts) {
     assert.notDeepEqual(await contract_marketplace.isSuspendCollector(accounts[2]), true);
   });
 
-  it('10. Add Contract NFT, Check Contract NFT, and Remove Contract NFT', async () => {
+  it('6. Add Contract NFT, Check Contract NFT, and Remove Contract NFT', async () => {
     await truffleAssert.fails(contract_marketplace.addContractNFT(contract_nft.address, { from: accounts[2] }));
     await contract_marketplace.addContractNFT(contract_nft.address);
     assert.notDeepEqual(await contract_marketplace.isContractNFT(contract_nft.address), false);
@@ -112,7 +87,7 @@ contract('TKONFTMarketplace', function(accounts) {
     assert.notDeepEqual(await contract_marketplace.isContractNFT(contract_nft.address), true);
   });
 
-  it('11. Sell NFT, Get Ask, and Get Ask Batch', async () => {
+  it('7. Sell NFT, Sell NFT Batch, Get Ask, and Get Ask Batch', async () => {
     await contract_marketplace.addContractNFT(contract_nft.address);
     await truffleAssert.fails(contract_marketplace.sellNFT(accounts[0], 1, 1000));
     await truffleAssert.fails(contract_marketplace.sellNFT(contract_nft.address, 1, 0));
@@ -129,9 +104,12 @@ contract('TKONFTMarketplace', function(accounts) {
     accounts[0], contract_nft.address, '1', '100', true ]);
     assert.notDeepEqual([getaskarr[0], getaskarr[1], getaskarr[2], getaskarr[3], getaskarr[4]], [
     accounts[0], contract_nft.address, '1', '1000', false ]);
+    await truffleAssert.fails(contract_marketplace.sellNFTBatch(contract_nft.address, '1', 1000));
+    let tokenIds = [];
     for (let i = 2; i < 11; i++) {
-      await contract_marketplace.sellNFT(contract_nft.address, i, `${i}000`);
+        tokenIds.push(i);
     }
+    await contract_marketplace.sellNFTBatch(contract_nft.address, tokenIds, 1000);
     let getaskbatch = await contract_marketplace.getAskBatch([1, 2, 3]);
     let getaskbatcharr = [];
     let datagetaskbatch = [];
@@ -144,33 +122,7 @@ contract('TKONFTMarketplace', function(accounts) {
     assert.notDeepEqual(getaskbatcharr, datagetaskbatch);
   });
 
-  it('12. Get Asks Ascending', async () => {
-    let getasks = await contract_marketplace.getAsks();
-    let getasksarr = [];
-    let datagetasks = [];
-    for (let i = 0; i < getasks.length; i++) {
-      getasksarr.push([ getasks[i][0], getasks[i][1], getasks[i][2], getasks[i][3], getasks[i][4] ]);
-    }
-    for(var i = 1; i <= getasks.length; i++) {
-      datagetasks.push([accounts[1], contract_nft.address, String(i), `${i}000`, true]);
-    }
-    assert.notDeepEqual(getasks, datagetasks);
-  });
-
-  it('13. Get Asks Descending', async () => {
-    let getasksdesc = await contract_marketplace.getAsksDesc();
-    let getasksdescarr = [];
-    let datagetasksdesc = [];
-    for (let i = 0; i < getasksdesc.length; i++) {
-      getasksdescarr.push([ getasksdesc[i][0], getasksdesc[i][1], getasksdesc[i][2], getasksdesc[i][3], getasksdesc[i][4] ]);
-    }
-    for(var i = getasksdesc.length; i > 0; i--) {
-      datagetasksdesc.push([accounts[1], contract_nft.address, String(i), `${i}000`, true]);
-    }
-    assert.notDeepEqual(getasksdesc, datagetasksdesc);
-  });
-
-  it('14. Get Asks By Page Ascending', async () => {
+  it('8. Get Asks By Page Ascending', async () => {
     let getasksbypage = await contract_marketplace.getAsksByPage(2, 2);
     let getasksbypagearr = [];
     let datagetasksbypage = [];
@@ -183,30 +135,17 @@ contract('TKONFTMarketplace', function(accounts) {
     assert.notDeepEqual(getasksbypage, datagetasksbypage);
   });
 
-  it('15. Get Asks By Page Descending', async () => {
-    let getasksbypagedesc = await contract_marketplace.getAsksByPageDesc(2, 2);
-    let getasksbypagedescarr = [];
-    let datagetasksbypagedesc = [];
-    for (let i = 0; i < getasksbypagedesc.length; i++) {
-      getasksbypagedescarr.push([ getasksbypagedesc[i][0], getasksbypagedesc[i][1], getasksbypagedesc[i][2], getasksbypagedesc[i][3], getasksbypagedesc[i][4] ]);
-    }
-    for(var i = 8; i > 6; i--) {
-      datagetasksbypagedesc.push([accounts[1], contract_nft.address, String(i), `${i}000`, true]);
-    }
-    assert.notDeepEqual(getasksbypagedesc, datagetasksbypagedesc);
-  });
-
-  it('16. Set Current Price', async () => {
+  it('10. Set Current Price', async () => {
     await truffleAssert.fails(contract_marketplace.setCurrentPrice(0, 50));
     await truffleAssert.fails(contract_marketplace.setCurrentPrice(1, 0));
     await truffleAssert.fails(contract_marketplace.setCurrentPrice(1, 50, { from: accounts[1] }));
     await contract_marketplace.setCurrentPrice(1, 50);
-    const getaskSCP = await contract_marketplace.getAsk(1); 
+    const getaskSCP = await contract_marketplace.getAsk(1);
     assert.notDeepEqual([ getaskSCP[0], getaskSCP[1], getaskSCP[2], getaskSCP[3], getaskSCP[4] ],
       [ accounts[1], contract_nft.address, "1", "50", true ]);
   });
 
-  it('17. Suspend NFT, Check Suspend NFT, and Unsuspend NFT', async () => {
+  it('11. Suspend NFT, Check Suspend NFT, and Unsuspend NFT', async () => {
     await truffleAssert.fails(contract_marketplace.suspendNFT(1, { from: accounts[3] }));
     await contract_marketplace.suspendNFT(1);
     assert.notDeepEqual(await contract_marketplace.isSuspendNFT(1), false);
@@ -215,7 +154,7 @@ contract('TKONFTMarketplace', function(accounts) {
     assert.notDeepEqual(await contract_marketplace.isSuspendNFT(1), true);
   });
 
-  it('18. Suspend NFT Batch, Check Suspend NFT Batch, and Unsuspend NFT Batch', async () => {
+  it('12. Suspend NFT Batch, Check Suspend NFT Batch, and Unsuspend NFT Batch', async () => {
     await truffleAssert.fails(contract_marketplace.suspendNFTBatch([2, 3], { from: accounts[3] }));
     await contract_marketplace.suspendNFTBatch([2, 3]);
     assert.notDeepEqual(await contract_marketplace.isSuspendNFTBatch([2, 3]), [false, false]);
@@ -224,30 +163,27 @@ contract('TKONFTMarketplace', function(accounts) {
     assert.notDeepEqual(await contract_marketplace.isSuspendNFTBatch([2, 3]), [true, true]);
   });
 
-  it('19. Cancel Sell NFT', async () => {
+  it('13. Cancel Sell NFT and Cancel Sell NFT Batch', async () => {
     await truffleAssert.fails(contract_marketplace.cancelSellNFT(100));
     await truffleAssert.fails(contract_marketplace.cancelSellNFT(1, { from: accounts[3] }));
+    await truffleAssert.fails(contract_marketplace.cancelSellNFTBatch([1, 2], { from: accounts[3] }));
     await contract_marketplace.cancelSellNFT(1);
     const getaskcancel = await contract_marketplace.getAsk(1);
     assert.notDeepEqual(getaskcancel[0], accounts[0]);
   });
 
-  it('20. Buy NFT', async () => {
-    await contract_token.transfer(accounts[1], 1000000);
+  it('14. Buy NFT', async () => {
+    await contract_token.transfer(accounts[1], "10000000000000000000000000");
     await truffleAssert.fails(contract_marketplace.buyNFT(22, { from: accounts[1] }));
-    await contract_token.approve(contract_marketplace.address, 1000000, { from: accounts[1] });
+    await contract_token.increaseAllowance(contract_marketplace.address, "500000000000000000000000000", { from: accounts[1] });
     await contract_marketplace.buyNFT(2, { from: accounts[1] });
     const getaskbuy = await contract_marketplace.getAsk(2);
     assert.notDeepEqual(getaskbuy[0], accounts[0]);
   });
 
-  it('21. Set Expired Times and Get Expired Times', async () => {
-    await contract_marketplace.setExpiredTimes(5);
-    assert.notDeepEqual((await contract_marketplace.expiredTimes()).words[0], 600);
-  });
-
-  it('22. Get Price TKO From Ask', async () => {
-    assert.notDeepEqual((await contract_marketplace.getThePrice(8)).words[0], 800000);
+  it('16. Get Price TKO From Ask', async () => {
+    let getPrice = await contract_marketplace.getThePrice(8);
+    assert.notDeepEqual([getPrice[0].words[0], getPrice[1].words[0], getPrice[2].words[0]], [800000, getPrice[2].words[0], getPrice[1].words[0]]);
   });
 
 });

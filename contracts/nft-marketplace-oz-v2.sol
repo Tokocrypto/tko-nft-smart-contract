@@ -169,11 +169,14 @@ contract TKONFTMarketplaceV2 is Initializable, UUPSUpgradeable, ERC721HolderUpgr
         require(!_suspendCollector[sender]);
         require(!_suspendNFTDetail[contractNFT_][tokenId_]);
         uint256 numAsk = _numAsk.current();
+        address firstSellingToken = _firstSellingTokens[contractNFT_][tokenId_];
         IERC721(contractNFT_).safeTransferFrom(sender, address(this), tokenId_);
         _numAskSellNFT[numAsk] = true;
         _numAsk.increment();
-        if (hasRole(MERCHANT_ROLE, sender) && _firstSellingTokens[contractNFT_][tokenId_] == address(0)) {
+        if (firstSellingToken == address(0)) {
             _firstSellingTokens[contractNFT_][tokenId_] = sender;
+        }
+        if (hasRole(MERCHANT_ROLE, sender) && firstSellingToken == address(0)) {
             _NFTSellers[numAsk] = AskEntry(sender, contractNFT_, tokenId_, price_, true);
         } else {
             _NFTSellers[numAsk] = AskEntry(sender, contractNFT_, tokenId_, price_, false);
@@ -238,15 +241,16 @@ contract TKONFTMarketplaceV2 is Initializable, UUPSUpgradeable, ERC721HolderUpgr
         require(updatedAt <= (startedAt + _expiredTimes));
         uint256 feeOwner = (price / 1e4);
         uint256 amountForSeller = price;
+        address firstSellingToken = _firstSellingTokens[NFTSeller._contractNFT][NFTSeller._tokenId];
         if (hasRole(MERCHANT_ROLE, NFTSeller._seller) && NFTSeller._firstSellingMerchant) {
             feeOwner *= _feeMarketplace;
             amountForSeller -= feeOwner;
         } else {
-            if (_firstSellingTokens[NFTSeller._contractNFT][NFTSeller._tokenId] != address(0)) {
+            if (firstSellingToken != address(0) && hasRole(MERCHANT_ROLE, firstSellingToken)) {
                 feeOwner *= _feeOwner;
                 uint256 feeMerchant = (price / 1e4) * _feeMerchant;
                 amountForSeller = amountForSeller - feeOwner - feeMerchant;
-                tkoContract.transferFrom(sender, _firstSellingTokens[NFTSeller._contractNFT][NFTSeller._tokenId], feeMerchant);
+                tkoContract.transferFrom(sender, firstSellingToken, feeMerchant);
             } else {
                 feeOwner *= _feeCollector;
                 amountForSeller -= feeOwner;

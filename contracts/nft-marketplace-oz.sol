@@ -11,7 +11,7 @@ import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "./IBEP20.sol";
 
-contract TKONFTMarketplaceV2 is Initializable, UUPSUpgradeable, ERC721HolderUpgradeable, AccessControlUpgradeable, PausableUpgradeable {
+contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgradeable, AccessControlUpgradeable, PausableUpgradeable {
     using CountersUpgradeable for CountersUpgradeable.Counter;
     CountersUpgradeable.Counter private _numAsk;
     AggregatorV3Interface internal priceFeed;
@@ -42,9 +42,9 @@ contract TKONFTMarketplaceV2 is Initializable, UUPSUpgradeable, ERC721HolderUpgr
     mapping(address => mapping(uint256 => bool)) private _suspendNFTDetail;
     mapping(address => bool) private _contractNFT;
     mapping(address => mapping(uint256 => address)) private _firstSellingTokens;
-
+    
     // add for testing
-    uint8 public constant version = 2;
+    // uint8 public constant version = 1;
 
     event Trade(uint256 indexed ask, address indexed seller, address indexed buyer, address contractNFT, uint256 tokenId, uint256 price);
     event Ask(uint256 indexed ask, address indexed seller, address contractNFT, uint256 tokenId, uint256 price);
@@ -52,7 +52,7 @@ contract TKONFTMarketplaceV2 is Initializable, UUPSUpgradeable, ERC721HolderUpgr
     event SuspendNFT(uint256 indexed ask, address indexed contractNFT, uint256 tokenId);
     event ContractNFT(address indexed contractNFT);
 
-    function initialize(address contractTKO, address feeAddress_, address contractPrice) initializer public {
+    function initialize(address contractTKO, address feeAddress_, address contractPrice) public initializer {
         _numAsk.increment();
         _feeAddress = feeAddress_;
         tkoContract = IBEP20(contractTKO);
@@ -169,11 +169,14 @@ contract TKONFTMarketplaceV2 is Initializable, UUPSUpgradeable, ERC721HolderUpgr
         require(!_suspendCollector[sender]);
         require(!_suspendNFTDetail[contractNFT_][tokenId_]);
         uint256 numAsk = _numAsk.current();
+        address firstSellingToken = _firstSellingTokens[contractNFT_][tokenId_];
         IERC721(contractNFT_).safeTransferFrom(sender, address(this), tokenId_);
         _numAskSellNFT[numAsk] = true;
         _numAsk.increment();
-        if (hasRole(MERCHANT_ROLE, sender) && _firstSellingTokens[contractNFT_][tokenId_] == address(0)) {
+        if (firstSellingToken == address(0)) {
             _firstSellingTokens[contractNFT_][tokenId_] = sender;
+        }
+        if (hasRole(MERCHANT_ROLE, sender) && firstSellingToken == address(0)) {
             _NFTSellers[numAsk] = AskEntry(sender, contractNFT_, tokenId_, price_, true);
         } else {
             _NFTSellers[numAsk] = AskEntry(sender, contractNFT_, tokenId_, price_, false);
@@ -238,15 +241,16 @@ contract TKONFTMarketplaceV2 is Initializable, UUPSUpgradeable, ERC721HolderUpgr
         require(updatedAt <= (startedAt + _expiredTimes));
         uint256 feeOwner = (price / 1e4);
         uint256 amountForSeller = price;
+        address firstSellingToken = _firstSellingTokens[NFTSeller._contractNFT][NFTSeller._tokenId];
         if (hasRole(MERCHANT_ROLE, NFTSeller._seller) && NFTSeller._firstSellingMerchant) {
             feeOwner *= _feeMarketplace;
             amountForSeller -= feeOwner;
         } else {
-            if (_firstSellingTokens[NFTSeller._contractNFT][NFTSeller._tokenId] != address(0)) {
+            if (firstSellingToken != address(0) && hasRole(MERCHANT_ROLE, firstSellingToken)) {
                 feeOwner *= _feeOwner;
                 uint256 feeMerchant = (price / 1e4) * _feeMerchant;
                 amountForSeller = amountForSeller - feeOwner - feeMerchant;
-                tkoContract.transferFrom(sender, _firstSellingTokens[NFTSeller._contractNFT][NFTSeller._tokenId], feeMerchant);
+                tkoContract.transferFrom(sender, firstSellingToken, feeMerchant);
             } else {
                 feeOwner *= _feeCollector;
                 amountForSeller -= feeOwner;

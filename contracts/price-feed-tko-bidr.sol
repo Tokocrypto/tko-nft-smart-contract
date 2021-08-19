@@ -15,6 +15,9 @@ contract PriceFeedTKOBIDR is AggregatorV3Interface, Ownable {
     uint256 private version_;
 
     mapping(uint80 => pricefeed) private tkobidr;
+    event Decimals(uint8 indexed decimals);
+    event Description(string indexed description);
+    event Version(uint256 indexed version);
     event Price(uint80 indexed roundId, int256 answer, uint256 startedAt);
 
     constructor(uint8 _decimals, string memory _description, uint256 _version) public {
@@ -26,14 +29,17 @@ contract PriceFeedTKOBIDR is AggregatorV3Interface, Ownable {
 
     function updateDecimals(uint8 _decimals) external onlyOwner {
         decimals_ = _decimals;
+        emit Decimals(_decimals);
     }
 
     function updateDescription(string memory _description) external onlyOwner {
         description_ = _description;
+        emit Description(_description);
     }
 
     function updateVersion(uint256 _version) external onlyOwner {
         version_ = _version;
+        emit Version(_version);
     }
 
     function updatePrice(int256 _answer) external onlyOwner {

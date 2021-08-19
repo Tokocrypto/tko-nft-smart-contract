@@ -51,6 +51,7 @@ contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgrad
     event CancelSellNFT(uint256 indexed ask, address indexed seller, address contractNFT, uint256 tokenId);
     event SuspendNFT(uint256 indexed ask, address indexed contractNFT, uint256 tokenId);
     event ContractNFT(address indexed contractNFT);
+    event LogBuy(address firstSellingToken, bool hasRoleMerchant, bool sellerMerchantRole, bool firstSellingMerchant);
 
     function initialize(address contractTKO, address feeAddress_, address contractPrice) public initializer {
         _numAsk.increment();
@@ -242,11 +243,13 @@ contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgrad
         uint256 feeOwner = (price / 1e4);
         uint256 amountForSeller = price;
         address firstSellingToken = _firstSellingTokens[NFTSeller._contractNFT][NFTSeller._tokenId];
-        if (hasRole(MERCHANT_ROLE, NFTSeller._seller) && NFTSeller._firstSellingMerchant) {
+        bool sellerMerchantRole = hasRole(MERCHANT_ROLE, NFTSeller._seller);
+        bool isMerchantRole = hasRole(MERCHANT_ROLE, firstSellingToken);
+        if (sellerMerchantRole && NFTSeller._firstSellingMerchant) {
             feeOwner *= _feeMarketplace;
             amountForSeller -= feeOwner;
         } else {
-            if (firstSellingToken != address(0) && hasRole(MERCHANT_ROLE, firstSellingToken)) {
+            if (firstSellingToken != address(0) && isMerchantRole) {
                 feeOwner *= _feeOwner;
                 uint256 feeMerchant = (price / 1e4) * _feeMerchant;
                 amountForSeller = amountForSeller - feeOwner - feeMerchant;
@@ -262,6 +265,7 @@ contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgrad
         delete _numAskSellNFT[numAsk_];
         delete _NFTSellers[numAsk_];
         emit Trade(numAsk_, NFTSeller._seller, sender, NFTSeller._contractNFT, NFTSeller._tokenId, price);
+        emit LogBuy(firstSellingToken, isMerchantRole, sellerMerchantRole, NFTSeller._firstSellingMerchant);
     }
 
     function getAsk(uint256 numAsk_) public view returns(AskEntry memory) {

@@ -17,6 +17,7 @@ contract TKONFT is ERC721URIStorage, AccessControl {
     mapping(uint256 => bool) private verify;
 
     event Verify(uint256 tokenId);
+    event RemoveVerify(uint256 tokenId);
 
     constructor() ERC721("Tokocrypto NFT", "TKONFT") {
         _tokenIds.increment();
@@ -121,6 +122,7 @@ contract TKONFT is ERC721URIStorage, AccessControl {
     function removeVerify(uint256 tokenId) external onlyRole(OPS_ROLE) {
         require(verify[tokenId] == true, "ERC721: tokenId not verified");
         verify[tokenId] = false;
+        emit RemoveVerify(tokenId);
     }
 
     function removeVerifyBatch(uint256[] memory tokenIds) external onlyRole(OPS_ROLE) {

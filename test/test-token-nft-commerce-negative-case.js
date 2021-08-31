@@ -10,8 +10,6 @@ contract('TKONFT', function(accounts) {
   let OPS_ROLE;
   let DEFAULT_ADMIN_ROLE;
 
-  console.log(accounts);
-
   before(async function() {
     contract_instance = await TKONFT.deployed();
     MINTER_ROLE = await contract_instance.MINTER_ROLE.call();

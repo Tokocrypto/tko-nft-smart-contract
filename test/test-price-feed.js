@@ -6,15 +6,13 @@ contract('PriceFeedTKOBIDR', function(accounts) {
 
   let contract_instance;
 
-  console.log(accounts);
-
   before(async function() {
     contract_instance = await PriceFeedTKOBIDR.deployed();
   });
 
   it('1. Update Decimals and Check Decimals', async () => {
     await contract_instance.updateDecimals(0);
-    assert.deepEqual((await contract_instance.decimals()).words[0], 0);
+    assert.deepEqual(Number(await contract_instance.decimals()), 0);
   });
 
   it('2. Update Description and Check Description', async () => {
@@ -24,17 +22,17 @@ contract('PriceFeedTKOBIDR', function(accounts) {
 
   it('3. Update Version and Check Version', async () => {
     await contract_instance.updateVersion(1);
-    assert.deepEqual((await contract_instance.version()).words[0], 1);
+    assert.deepEqual(Number(await contract_instance.version()), 1);
   });
 
   it('4. Update Price, Get Latest Round Data, and Get Round Data', async () => {
     await contract_instance.updatePrice(10000);
     let lrd = await contract_instance.latestRoundData();
-    assert.deepEqual([lrd[0].words[0], lrd[1].words[0], lrd[2].words[0], lrd[3].words[0], lrd[4].words[0]],
-        [2, 10000, lrd[2].words[0], lrd[3].words[0], 2]);
+    assert.deepEqual([Number(lrd[0]), Number(lrd[1]), Number(lrd[2]), Number(lrd[3]), Number(lrd[4])],
+        [2, 10000, Number(lrd[2]), Number(lrd[3]), 2]);
     let grd = await contract_instance.getRoundData(1);
-    assert.deepEqual([grd[0].words[0], grd[1].words[0], grd[2].words[0], grd[3].words[0], grd[4].words[0]],
-        [1, 10000, grd[2].words[0], grd[3].words[0], 2]);
+    assert.deepEqual([Number(grd[0]), Number(grd[1]), Number(grd[2]), Number(grd[3]), Number(grd[4])],
+        [1, 10000, Number(grd[2]), Number(grd[3]), 2]);
   });
 
 });

@@ -6,8 +6,6 @@ contract('PriceFeedTKOBIDR', function(accounts) {
 
   let contract_instance;
 
-  console.log(accounts);
-
   before(async function() {
     contract_instance = await PriceFeedTKOBIDR.deployed();
   });

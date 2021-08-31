@@ -43,14 +43,17 @@ contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgrad
     mapping(address => bool) private _contractNFT;
     mapping(address => mapping(uint256 => address)) private _firstSellingTokens;
     
-    // add for testing
-    // uint8 public constant version = 1;
+    uint16 public versionCode;
 
     event Trade(uint256 indexed ask, address indexed seller, address indexed buyer, address contractNFT, uint256 tokenId, uint256 price);
     event Ask(uint256 indexed ask, address indexed seller, address contractNFT, uint256 tokenId, uint256 price);
     event CancelSellNFT(uint256 indexed ask, address indexed seller, address contractNFT, uint256 tokenId);
     event SuspendNFT(uint256 indexed ask, address indexed contractNFT, uint256 tokenId);
     event ContractNFT(address indexed contractNFT);
+    event Fee(uint16 feeMarketplace, uint16 feeOwner, uint16 feeMerchant, uint16 feeCollector);
+    event FeeAddress(address indexed feeAddress);
+    event SuspendCollector(address indexed adressCollector);
+    event SetExpiredTimes(uint256 expiredTimes);
     event LogBuy(address firstSellingToken, bool hasRoleMerchant, bool sellerMerchantRole, bool firstSellingMerchant);
 
     function initialize(address contractTKO, address feeAddress_, address contractPrice) public initializer {
@@ -63,7 +66,9 @@ contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgrad
         priceFeed = AggregatorV3Interface(contractPrice);
     }
 
-    function _authorizeUpgrade(address) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
+    function _authorizeUpgrade(address) internal override onlyRole(DEFAULT_ADMIN_ROLE) {
+        versionCode += 1;
+    }
 
     function pause() external onlyRole(DEFAULT_ADMIN_ROLE) whenNotPaused {
         _pause();
@@ -82,6 +87,7 @@ contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgrad
         _feeOwner = feeOwner_;
         _feeMerchant = feeMerchant_;
         _feeCollector = feeCollector_;
+        emit Fee(feeMarketplace_, feeOwner_, feeMerchant_, feeCollector_);
     }
 
     function showFee() external view returns(uint16, uint16, uint16, uint16) {
@@ -90,6 +96,7 @@ contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgrad
 
     function setFeeAddress(address feeAddress_) external onlyRole(DEFAULT_ADMIN_ROLE) whenNotPaused {
         _feeAddress = feeAddress_;
+        emit FeeAddress(feeAddress_);
     }
 
     function showFeeAddress() external view returns(address) {
@@ -113,6 +120,7 @@ contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgrad
     function suspendCollector(address collector_) external onlyRole(OPS_ROLE) whenNotPaused {
         require(!_suspendCollector[collector_]);
         _suspendCollector[collector_] = true;
+        emit SuspendCollector(collector_);
     }
 
     function unsuspendCollector(address collector_) external onlyRole(OPS_ROLE) whenNotPaused {
@@ -124,105 +132,81 @@ contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgrad
         return _suspendCollector[collector_];
     }
 
-    function suspendNFT(uint256 numAsk_) public onlyRole(OPS_ROLE) whenNotPaused {
-        require(!_suspendNFT[numAsk_]);
-        AskEntry memory NFTSeller = _NFTSellers[numAsk_];
-        _suspendNFT[numAsk_] = true;
-        _suspendNFTDetail[NFTSeller._contractNFT][NFTSeller._tokenId] = true;
-        emit SuspendNFT(numAsk_, NFTSeller._contractNFT, NFTSeller._tokenId);
-    }
-
-    function suspendNFTBatch(uint256[] calldata numAsks_) external {
+    function suspendNFTBatch(uint256[] calldata numAsks_) external onlyRole(OPS_ROLE) whenNotPaused {
         for(uint256 i = 0; i < numAsks_.length; i++) {
-            suspendNFT(numAsks_[i]);
+            require(!_suspendNFT[numAsks_[i]]);
+            AskEntry memory NFTSeller = _NFTSellers[numAsks_[i]];
+            _suspendNFT[numAsks_[i]] = true;
+            _suspendNFTDetail[NFTSeller._contractNFT][NFTSeller._tokenId] = true;
+            emit SuspendNFT(numAsks_[i], NFTSeller._contractNFT, NFTSeller._tokenId);
         }
     }
 
-    function unsuspendNFT(uint256 numAsk_) public onlyRole(OPS_ROLE) whenNotPaused {
-        require(_suspendNFT[numAsk_]);
-        AskEntry memory NFTSeller = _NFTSellers[numAsk_];
-        delete _suspendNFT[numAsk_];
-        delete _suspendNFTDetail[NFTSeller._contractNFT][NFTSeller._tokenId];
-    }
-
-    function unsuspendNFTBatch(uint256[] calldata numAsks_) external {
+    function unsuspendNFTBatch(uint256[] calldata numAsks_) external onlyRole(OPS_ROLE) whenNotPaused {
         for(uint256 i = 0; i < numAsks_.length; i++) {
-            unsuspendNFT(numAsks_[i]);
+            require(_suspendNFT[numAsks_[i]]);
+            AskEntry memory NFTSeller = _NFTSellers[numAsks_[i]];
+            delete _suspendNFT[numAsks_[i]];
+            delete _suspendNFTDetail[NFTSeller._contractNFT][NFTSeller._tokenId];
         }
-    }
-
-    function isSuspendNFT(uint256 numAsk_) public view returns(bool) {
-        return _suspendNFT[numAsk_];
     }
 
     function isSuspendNFTBatch(uint256[] calldata numAsks_) external view returns(bool[] memory) {
         bool[] memory boolAsks = new bool[](numAsks_.length);
         for(uint256 i = 0; i < numAsks_.length; i++) {
-            boolAsks[i] = isSuspendNFT(numAsks_[i]);
+            boolAsks[i] = _suspendNFT[numAsks_[i]];
         }
         return boolAsks;
     }
 
-    function sellNFT(address contractNFT_, uint256 tokenId_, uint256 price_) public whenNotPaused {
+    function sellNFTBatch(address contractNFT_, uint256[] calldata tokenIds_, uint256 price_) external whenNotPaused {
         address sender = _msgSender();
         require(price_ > 0);
         require(_contractNFT[contractNFT_]);
         require(!_suspendCollector[sender]);
-        require(!_suspendNFTDetail[contractNFT_][tokenId_]);
-        uint256 numAsk = _numAsk.current();
-        address firstSellingToken = _firstSellingTokens[contractNFT_][tokenId_];
-        IERC721(contractNFT_).safeTransferFrom(sender, address(this), tokenId_);
-        _numAskSellNFT[numAsk] = true;
-        _numAsk.increment();
-        if (firstSellingToken == address(0)) {
-            _firstSellingTokens[contractNFT_][tokenId_] = sender;
-        }
-        if (hasRole(MERCHANT_ROLE, sender) && firstSellingToken == address(0)) {
-            _NFTSellers[numAsk] = AskEntry(sender, contractNFT_, tokenId_, price_, true);
-        } else {
-            _NFTSellers[numAsk] = AskEntry(sender, contractNFT_, tokenId_, price_, false);
-        }
-        emit Ask(numAsk, sender, contractNFT_, tokenId_, price_);
-    }
-
-    function sellNFTBatch(address contractNFT_, uint256[] calldata tokenIds_, uint256 price_) external {
         for (uint256 i = 0; i < tokenIds_.length; i++) {
-            sellNFT(contractNFT_, tokenIds_[i], price_);
+            require(!_suspendNFTDetail[contractNFT_][tokenIds_[i]]);
+            uint256 numAsk = _numAsk.current();
+            address firstSellingToken = _firstSellingTokens[contractNFT_][tokenIds_[i]];
+            IERC721(contractNFT_).safeTransferFrom(sender, address(this), tokenIds_[i]);
+            _numAskSellNFT[numAsk] = true;
+            _numAsk.increment();
+            if (firstSellingToken == address(0)) {
+                _firstSellingTokens[contractNFT_][tokenIds_[i]] = sender;
+            }
+            if (hasRole(MERCHANT_ROLE, sender) && firstSellingToken == address(0)) {
+                _NFTSellers[numAsk] = AskEntry(sender, contractNFT_, tokenIds_[i], price_, true);
+            } else {
+                _NFTSellers[numAsk] = AskEntry(sender, contractNFT_, tokenIds_[i], price_, false);
+            }
+            emit Ask(numAsk, sender, contractNFT_, tokenIds_[i], price_);
         }
     }
 
-    function setCurrentPrice(uint256 numAsk_, uint256 price_) public whenNotPaused {
+    function setCurrentPriceBatch(uint256[] calldata numAsks_, uint256 price_) external whenNotPaused {
         address sender = _msgSender();
-        AskEntry memory NFTSeller = _NFTSellers[numAsk_];
         require(price_ > 0);
-        require(!_suspendNFT[numAsk_]);
         require(!_suspendCollector[sender]);
-        require(NFTSeller._seller == sender);
-        require(_numAskSellNFT[numAsk_]);
-        _NFTSellers[numAsk_]._price = price_;
-        emit Ask(numAsk_, sender, NFTSeller._contractNFT, NFTSeller._tokenId, price_);
-    }
-
-    function setCurrentPriceBatch(uint256[] calldata numAsks_, uint256 price_) external {
         for (uint256 i = 0; i < numAsks_.length; i++) {
-            setCurrentPrice(numAsks_[i], price_);
+            AskEntry memory NFTSeller = _NFTSellers[numAsks_[i]];
+            require(!_suspendNFT[numAsks_[i]]);
+            require(NFTSeller._seller == sender);
+            require(_numAskSellNFT[numAsks_[i]]);
+            _NFTSellers[numAsks_[i]]._price = price_;
+            emit Ask(numAsks_[i], sender, NFTSeller._contractNFT, NFTSeller._tokenId, price_);
         }
     }
 
-    function cancelSellNFT(uint256 numAsk_) public whenNotPaused {
+    function cancelSellNFTBatch(uint256[] calldata numAsks_) external whenNotPaused {
         address sender = _msgSender();
-        AskEntry memory NFTSeller = _NFTSellers[numAsk_];
-        require(NFTSeller._seller == sender);
-        require(_numAskSellNFT[numAsk_]);
-        IERC721(NFTSeller._contractNFT).safeTransferFrom(address(this), sender, NFTSeller._tokenId);
-        delete _numAskSellNFT[numAsk_];
-        delete _NFTSellers[numAsk_];
-        emit CancelSellNFT(numAsk_, sender, NFTSeller._contractNFT, NFTSeller._tokenId);
-    }
-
-    function cancelSellNFTBatch(uint256[] calldata numAsks_) external {
         for (uint256 i = 0; i < numAsks_.length; i++) {
-            cancelSellNFT(numAsks_[i]);
+            AskEntry memory NFTSeller = _NFTSellers[numAsks_[i]];
+            require(NFTSeller._seller == sender);
+            require(_numAskSellNFT[numAsks_[i]]);
+            IERC721(NFTSeller._contractNFT).safeTransferFrom(address(this), sender, NFTSeller._tokenId);
+            delete _numAskSellNFT[numAsks_[i]];
+            delete _NFTSellers[numAsks_[i]];
+            emit CancelSellNFT(numAsks_[i], sender, NFTSeller._contractNFT, NFTSeller._tokenId);
         }
     }
 
@@ -268,14 +252,10 @@ contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgrad
         emit LogBuy(firstSellingToken, isMerchantRole, sellerMerchantRole, NFTSeller._firstSellingMerchant);
     }
 
-    function getAsk(uint256 numAsk_) public view returns(AskEntry memory) {
-        return _NFTSellers[numAsk_];
-    }
-
     function getAskBatch(uint256[] calldata numAsks_) external view returns(AskEntry[] memory) {
         AskEntry[] memory asks = new AskEntry[](numAsks_.length);
         for(uint256 i = 0; i < numAsks_.length; i++) {
-            asks[i] = getAsk(numAsks_[i]);
+            asks[i] = _NFTSellers[numAsks_[i]];
         }
         return asks;
     }
@@ -296,6 +276,7 @@ contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgrad
 
     function setExpiredTimes(uint256 expiredTimes_) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _expiredTimes = expiredTimes_ * 1 minutes;
+        emit SetExpiredTimes(expiredTimes_);
     }
 
     function getThePrice(uint256 numAsk_) public view returns(uint256, uint256, uint256, uint256) {

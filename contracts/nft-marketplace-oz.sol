@@ -10,6 +10,7 @@ import "@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "./IBEP20.sol";
+import "./interfaces/interfaceFee.sol";
 
 contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgradeable, AccessControlUpgradeable, PausableUpgradeable {
     using CountersUpgradeable for CountersUpgradeable.Counter;
@@ -25,10 +26,12 @@ contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgrad
     }
 
     IBEP20 private tkoContract;
-    uint16 private _feeMarketplace;
+    // Not use anymore, because is proxy
+    uint16 private _feeMarketplace; 
     uint16 private _feeOwner;
     uint16 private _feeMerchant;
     uint16 private _feeCollector;
+    // Not use anymore, because is proxy
     address private _feeAddress;
     uint256 private _expiredTimes;
 
@@ -44,6 +47,8 @@ contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgrad
     mapping(address => mapping(uint256 => address)) private _firstSellingTokens;
     
     uint16 public versionCode;
+
+    IFee interfaceFee;
 
     event Trade(uint256 indexed ask, address indexed seller, address indexed buyer, address contractNFT, uint256 tokenId, uint256 price);
     event Ask(uint256 indexed ask, address indexed seller, address contractNFT, uint256 tokenId, uint256 price);
@@ -70,28 +75,16 @@ contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgrad
         versionCode += 1;
     }
 
+    function setIFee(address contractAddress) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        interfaceFee = IFee(contractAddress);
+    }
+
     function pause() external onlyRole(DEFAULT_ADMIN_ROLE) whenNotPaused {
         _pause();
     }
 
     function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) whenPaused {
         _unpause();
-    }
-
-    function setFee(uint16 feeMarketplace_, uint16 feeOwner_, uint16 feeMerchant_, uint16 feeCollector_) external onlyRole(DEFAULT_ADMIN_ROLE) whenNotPaused {
-        require(feeMarketplace_ <= 1e4);
-        require(feeOwner_ <= 1e4);
-        require(feeMerchant_ <= 1e4);
-        require(feeCollector_ <= 1e4);
-        _feeMarketplace = feeMarketplace_;
-        _feeOwner = feeOwner_;
-        _feeMerchant = feeMerchant_;
-        _feeCollector = feeCollector_;
-        emit Fee(feeMarketplace_, feeOwner_, feeMerchant_, feeCollector_);
-    }
-
-    function showFee() external view returns(uint16, uint16, uint16, uint16) {
-        return (_feeMarketplace, _feeOwner, _feeMerchant, _feeCollector);
     }
 
     function setFeeAddress(address feeAddress_) external onlyRole(DEFAULT_ADMIN_ROLE) whenNotPaused {
@@ -204,6 +197,9 @@ contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgrad
             require(NFTSeller._seller == sender);
             require(_numAskSellNFT[numAsks_[i]]);
             IERC721(NFTSeller._contractNFT).safeTransferFrom(address(this), sender, NFTSeller._tokenId);
+            if (_firstSellingTokens[NFTSeller._contractNFT][NFTSeller._tokenId] != address(0) && NFTSeller._firstSellingMerchant) {
+                delete _firstSellingTokens[NFTSeller._contractNFT][NFTSeller._tokenId];
+            }
             delete _numAskSellNFT[numAsks_[i]];
             delete _NFTSellers[numAsks_[i]];
             emit CancelSellNFT(numAsks_[i], sender, NFTSeller._contractNFT, NFTSeller._tokenId);
@@ -219,6 +215,12 @@ contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgrad
             uint256 updatedAt,
             // expiredTimes
         ) = getThePrice(numAsk_);
+        (
+            uint16 feeMarketplace_,
+            uint16 feeOwner_,
+            uint16 feeMerchant_,
+            uint16 feeCollector_
+        ) = interfaceFee.getFeeFor(NFTSeller._contractNFT);
         require(!_suspendNFT[numAsk_]);
         require(!_suspendCollector[sender]);
         require(_numAskSellNFT[numAsk_]);
@@ -227,19 +229,17 @@ contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgrad
         uint256 feeOwner = (price / 1e4);
         uint256 amountForSeller = price;
         address firstSellingToken = _firstSellingTokens[NFTSeller._contractNFT][NFTSeller._tokenId];
-        bool sellerMerchantRole = hasRole(MERCHANT_ROLE, NFTSeller._seller);
-        bool isMerchantRole = hasRole(MERCHANT_ROLE, firstSellingToken);
-        if (sellerMerchantRole && NFTSeller._firstSellingMerchant) {
-            feeOwner *= _feeMarketplace;
+        if (hasRole(MERCHANT_ROLE, NFTSeller._seller) && NFTSeller._firstSellingMerchant) {
+            feeOwner *= uint256(feeMarketplace_);
             amountForSeller -= feeOwner;
         } else {
-            if (firstSellingToken != address(0) && isMerchantRole) {
-                feeOwner *= _feeOwner;
-                uint256 feeMerchant = (price / 1e4) * _feeMerchant;
+            if (firstSellingToken != address(0) && hasRole(MERCHANT_ROLE, firstSellingToken)) {
+                feeOwner *= uint256(feeOwner_);
+                uint256 feeMerchant = (price / 1e4) * uint256(feeMerchant_);
                 amountForSeller = amountForSeller - feeOwner - feeMerchant;
                 tkoContract.transferFrom(sender, firstSellingToken, feeMerchant);
             } else {
-                feeOwner *= _feeCollector;
+                feeOwner *= uint256(feeCollector_);
                 amountForSeller -= feeOwner;
             }
         }
@@ -249,7 +249,7 @@ contract TKONFTMarketplace is Initializable, UUPSUpgradeable, ERC721HolderUpgrad
         delete _numAskSellNFT[numAsk_];
         delete _NFTSellers[numAsk_];
         emit Trade(numAsk_, NFTSeller._seller, sender, NFTSeller._contractNFT, NFTSeller._tokenId, price);
-        emit LogBuy(firstSellingToken, isMerchantRole, sellerMerchantRole, NFTSeller._firstSellingMerchant);
+        emit LogBuy(firstSellingToken, hasRole(MERCHANT_ROLE, firstSellingToken), hasRole(MERCHANT_ROLE, NFTSeller._seller), NFTSeller._firstSellingMerchant);
     }
 
     function getAskBatch(uint256[] calldata numAsks_) external view returns(AskEntry[] memory) {
